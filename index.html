@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NETDA Staff Allocator</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ExcelJS & FileSaver for Styled Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- SortableJS for Drag-and-Drop -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@0.321.0/dist/umd/lucide.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F5F5F7;
+            --bg-tertiary: #E8E8ED;
+            --bg-header: rgba(245, 245, 247, 0.95);
+            --accent: #F2B705; /* NETDA Yellow */
+            --accent-hover: #D9A404;
+            --text-primary: #1C1C1E;
+            --text-secondary: #86868B;
+            --text-on-accent: #1C1C1E;
+            --border: rgba(0, 0, 0, 0.08);
+            --radius-s: 8px;
+            --radius-m: 12px;
+            --radius-l: 18px;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+            --dept-rh: #007AFF;
+            --dept-it: #34C759;
+            --dept-mkt: #AF52DE;
+            --dept-atv: #FF9500;
+            --dept-dir: #5856D6;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1C1C1E;
+            --bg-secondary: #000000;
+            --bg-tertiary: #2C2C2E;
+            --bg-header: rgba(28, 28, 30, 0.95);
+            --text-primary: #F5F5F7;
+            --text-secondary: #8E8E93;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        
+        [data-theme="dark"] .logo-img { filter: invert(1) hue-rotate(180deg) brightness(1.2); }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+
+        body {
+            background-color: var(--bg-secondary); color: var(--text-primary);
+            height: 100vh; overflow: hidden; display: flex; flex-direction: column; position: relative;
+        }
+
+        .circuit { position: absolute; opacity: 0.15; pointer-events: none; z-index: 0; }
+        .circuit-tl { top: -20px; left: -20px; width: 450px; height: 450px; }
+        .circuit-tr { top: -20px; right: -20px; width: 400px; height: 400px; transform: scaleX(-1); }
+        .circuit-bl { bottom: -20px; left: -20px; width: 400px; height: 400px; transform: scaleY(-1); }
+        .circuit-br { bottom: -20px; right: -20px; width: 450px; height: 450px; transform: rotate(180deg); }
+        .circuit-mid1 { top: 35%; left: 8%; width: 280px; height: 280px; opacity: 0.1; }
+        .circuit-mid2 { top: 40%; right: 8%; width: 280px; height: 280px; transform: scaleX(-1); opacity: 0.1; }
+
+        @keyframes flow { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+        .circuit path { stroke-dasharray: 6 6; animation: flow 1s linear infinite !important; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+
+        header {
+            background: var(--bg-header); backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border); padding: 24px 64px 16px 64px;
+            display: flex; justify-content: space-between; align-items: center; z-index: 100;
+        }
+        .logo-section { display: flex; align-items: center; gap: 10px; }
+        .logo-icon { cursor: pointer; transition: transform 0.2s ease; }
+        .logo-icon:hover { transform: scale(1.05); }
+
+        .nav-segmented { background: var(--bg-tertiary); padding: 2px; border-radius: var(--radius-m); display: flex; position: absolute; left: 50%; transform: translateX(-50%); }
+        .nav-item { padding: 6px 16px; border-radius: calc(var(--radius-m) - 2px); border: none; background: transparent; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: var(--transition); }
+        .nav-item.active { background: var(--bg-primary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+
+        main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: transparent; z-index: 10; padding-bottom: 24px; }
+        .view-content { display: none; padding: 24px 64px; height: 100%; flex-direction: column; animation: contentFade 0.3s ease; overflow-y: auto; overflow-x: hidden; }
+        .view-content.active { display: flex; }
+        @keyframes contentFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        .btn-primary { background: var(--accent); color: var(--text-on-accent); border: none; padding: 10px 18px; border-radius: var(--radius-m); font-weight: 500; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--transition); }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(242,183,5,0.2); }
+        .btn-primary:active { transform: scale(0.97); }
+
+        .btn-circle { width: 38px; height: 38px; border-radius: 50%; border: none; background: transparent; color: var(--text-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition); }
+        .btn-circle:hover { background: var(--bg-tertiary); }
+
+        .input-modern { background: var(--bg-tertiary); border: 1px solid transparent; border-radius: var(--radius-s); padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--text-primary); outline: none; transition: var(--transition); }
+        .input-modern:focus { border-color: var(--accent); background: var(--bg-primary); }
+
+        .scrollable-body { flex: 1; overflow-y: auto; padding-right: 4px; }
+        .members-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+        .member-card { background: var(--bg-primary); border-radius: var(--radius-m); padding: 16px; box-shadow: var(--shadow-sm); cursor: pointer; transition: var(--transition); }
+        .badge { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; color: white; }
+        .badge-rh { background: var(--dept-rh); }
+        .badge-it { background: var(--dept-it); }
+        .badge-mkt { background: var(--dept-mkt); }
+        .badge-atv { background: var(--dept-atv); }
+        .badge-direcao { background: var(--dept-dir); }
+
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 16px; }
+        .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+        .config-card { background: var(--bg-primary); border-radius: var(--radius-m); padding: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-sm); cursor: pointer; }
+        .stepper { display: flex; align-items: center; background: var(--bg-tertiary); border-radius: var(--radius-s); padding: 2px; }
+        .btn-step { width: 28px; height: 28px; background: transparent; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+        .allocation-container { flex: 1; display: flex; gap: 20px; overflow: hidden; }
+        .alloc-sidebar { width: 220px; background: var(--bg-primary); border-radius: var(--radius-l); padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-sm); }
+        .sidebar-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+
+        .alloc-board { flex: 1; overflow: auto; background: var(--bg-primary); border-radius: var(--radius-l); border: 1px solid var(--border); }
+        .alloc-grid { display: grid; border-collapse: collapse; min-width: 800px; }
+
+        /* FIXED DARK MODE HEADER BACKGROUND & Z-INDEX */
+        .alloc-header-cell {
+            background: var(--bg-header); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 10;
+            padding: 12px; font-weight: 600; font-size: 12px; border-bottom: 2px solid var(--border); border-right: 1px solid var(--border); text-align: center;
+        }
+
+        .alloc-cell { padding: 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--bg-primary); transition: background-color 0.2s; }
+        .alloc-time-cell { background: var(--bg-secondary); font-weight: 600; position: sticky; left: 0; z-index: 5; border-right: 2px solid var(--border); }
+        .alloc-header-cell.alloc-time-cell { z-index: 20; background: var(--bg-header); }
+        .dropzone-cell { min-height: 44px; border-radius: var(--radius-s); background: rgba(232, 232, 237, 0.25); display: flex; flex-direction: column; gap: 4px; padding: 4px; transition: var(--transition); }
+        .dropzone-cell:empty { background: rgba(0,0,0,0.02); }
+        .draggable-card { background: var(--bg-primary); border-radius: var(--radius-s); padding: 6px 8px; font-size: 11px; font-weight: 500; border-left: 4px solid var(--text-secondary); box-shadow: var(--shadow-sm); cursor: grab; transition: transform 0.2s, box-shadow 0.2s; user-select: none; -webkit-user-select: none; }
+        .draggable-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+        .sortable-ghost { opacity: 0.3; background: var(--bg-tertiary) !important; border: 1px dashed var(--accent) !important; color: transparent; }
+        .sortable-drag { cursor: grabbing !important; transform: scale(1.05) rotate(2deg) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; z-index: 9999; }
+
+        @keyframes popCard { 0% { opacity: 0; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+        .pop-anim { animation: popCard 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 1000; }
+        .modal-card { background: var(--bg-primary); border-radius: var(--radius-l); padding: 24px; width: 100%; max-width: 440px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 16px; animation: modalIn 0.3s ease; }
+        @keyframes modalIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .dept-btn { padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .dept-btn:hover { background: var(--bg-tertiary); }
+        .dept-btn.active { background: var(--text-primary); color: var(--bg-primary); border-color: var(--text-primary); }
+
+        .preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .btn-tile { background: var(--bg-tertiary); border: 1px solid transparent; border-radius: var(--radius-m); padding: 12px; font-size: 13px; font-weight: 500; text-align: center; cursor: pointer; transition: var(--transition); }
+        .btn-tile:hover { background: var(--bg-primary); border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+
+        .toolbar-btn { background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: var(--transition); height: 30px; }
+        .toolbar-btn:hover { background: var(--bg-tertiary); }
+        .toolbar-select { background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); padding: 0 24px 0 10px; border-radius: 6px; font-size: 12px; font-weight: 500; outline: none; cursor: pointer; transition: var(--transition); height: 30px; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='gray' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 6px center; background-size: 14px; }
+        .toolbar-btn-danger { color: #FF3B30; border-color: rgba(255, 59, 48, 0.2); }
+        .toolbar-btn-danger:hover { background: rgba(255, 59, 48, 0.1); }
+        .segmented-control { display: flex; background: var(--bg-tertiary); padding: 3px; border-radius: 8px; align-items: center; }
+        .seg-btn { background: transparent; color: var(--text-secondary); border: none; padding: 4px 12px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+        .seg-btn.active { background: var(--bg-primary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+
+        #toast-container { position: fixed; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 12px; z-index: 9999; }
+        .toast { position: relative; overflow: hidden; background: #FF3B30; color: white; padding: 14px 24px; border-radius: var(--radius-m); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-md); animation: slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
+        .toast-progress { position: absolute; bottom: 0; left: 0; height: 3px; background: rgba(255,255,255,0.7); animation: toastShrink 3s linear forwards; }
+        @keyframes toastShrink { from { width: 100%; } to { width: 0%; } }
+        @keyframes slideInRight { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+        /* Drag & Drop Feedback */
+        .sortable-drag { transform: rotate(4deg) scale(1.05) !important; box-shadow: var(--shadow-lg) !important; cursor: grabbing !important; z-index: 9999; }
+        .sortable-ghost { opacity: 0.5 !important; background: repeating-linear-gradient(45deg, transparent, transparent 10px, var(--border) 10px, var(--border) 20px) !important; border: 1px dashed var(--text-secondary) !important; }
+
+        /* Circuit Element Glowing Pulses Removed, Replaced with Smooth Floating SVG container */
+        @keyframes floatCircuit { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(1deg); } 100% { transform: translateY(0px) rotate(0deg); } }
+        .circuit { animation: floatCircuit 12s ease-in-out infinite; }
+        .circuit:nth-child(even) { animation-delay: -6s; }
+
+        .editable-field { font-size: 14px; font-weight:400; color:var(--text-secondary); border-bottom: 1px dashed var(--accent); padding: 0 4px; outline:none; transition:var(--transition); cursor:text; min-width: 60px; display:inline-block; }
+        .editable-field:focus { color: var(--text-primary); border-bottom-style: solid; }
+    </style>
+</head>
+<body>
+
+    <svg class="circuit circuit-tl" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"><g stroke="var(--accent)" stroke-width="2" fill="none" stroke-linecap="round"><path d="M 0,100 H 150 V 250 H 50" /><circle cx="150" cy="100" r="4" fill="var(--accent)" /></g></svg>
+    <svg class="circuit circuit-tr" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"><g stroke="var(--accent)" stroke-width="2" fill="none" stroke-linecap="round"><path d="M 0,100 H 130 V 220 H 60" /><circle cx="130" cy="100" r="4" fill="var(--accent)" /><path d="M 80,0 V 150 H 250" /><circle cx="250" cy="150" r="4" fill="var(--accent)" /></g></svg>
+    <svg class="circuit circuit-mid1" viewBox="0 0 250 250" xmlns="http://www.w3.org/2000/svg"><g stroke="var(--accent)" stroke-width="1.5" fill="none" stroke-linecap="round"><path d="M 0,125 H 100 V 75 H 180" /><circle cx="100" cy="125" r="3" fill="var(--accent)" /></g></svg>
+    <svg class="circuit circuit-mid2" viewBox="0 0 250 250" xmlns="http://www.w3.org/2000/svg"><g stroke="var(--accent)" stroke-width="1.5" fill="none" stroke-linecap="round"><path d="M 0,75 H 120 V 160 H 200" /><circle cx="120" cy="75" r="3" fill="var(--accent)" /></g></svg>
+    <svg class="circuit circuit-bl" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"><g stroke="var(--accent)" stroke-width="2" fill="none" stroke-linecap="round"><path d="M 0,140 H 180 V 280 H 240" /><circle cx="180" cy="140" r="4" fill="var(--accent)" /></g></svg>
+    <svg class="circuit circuit-br" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"><g stroke="var(--accent)" stroke-width="2" fill="none" stroke-linecap="round"><path d="M 0,150 H 200 V 300 H 300" /><circle cx="200" cy="150" r="4" fill="var(--accent)" /></g></svg>
+
+    <header>
+        <div class="logo-section">
+            <div class="logo-icon" onclick="window.location.reload()" title="Página Inicial" style="cursor:pointer; display:flex;">
+                <img src="logo-netda.png" class="logo-img" alt="NETDA Logo" style="height: 48px; object-fit: contain; border-radius: 4px;">
+            </div>
+            <div style="display:flex; flex-direction:column; justify-content:center; margin-left: 8px;">
+                <h1 style="display:flex; align-items:center; gap:6px; font-size:16px;">Staff</h1>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="event-name" class="editable-field" contenteditable="true" spellcheck="false">[Nome do Evento]</span>
+                    <span style="color:var(--text-secondary); font-size:12px;">|</span>
+                    <input type="date" id="event-date" style="background:transparent; border:none; color:var(--text-secondary); font-size:13px; outline:none; cursor:pointer;" title="Data do Evento">
+                </div>
+            </div>
+        </div>
+        <nav class="nav-segmented">
+            <button class="nav-item active" onclick="switchTab('import')">Importar</button>
+            <button class="nav-item" onclick="switchTab('config')">Configurar</button>
+            <button class="nav-item" onclick="switchTab('allocate')">Alocação</button>
+            <button class="nav-item" onclick="switchTab('export')">Exportar</button>
+        </nav>
+        <div class="header-actions"><button class="btn-circle" onclick="toggleDarkMode()" title="Modo Noturno/Diurno"><i data-lucide="moon" style="width:18px;"></i></button></div>
+    </header>
+
+    <main>
+
+        <div class="view-content active" id="view-import">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px;">
+                <div>
+                    <h2>Membros (<span id="count-members">0</span>)</h2>
+                    <p style="color: var(--text-secondary); font-size: 14px;">Importe um Excel ou adicione manualmente.</p>
+                </div>
+            </div>
+
+            <div id="dropzone" class="upload-area" onclick="document.getElementById('file-input').click()">
+                <i data-lucide="upload-cloud" style="width:32px; height:32px; color:var(--accent)"></i>
+                <h2>Importar Membros</h2><p style="color: var(--text-secondary); font-size: 13px;">Carregar .xlsx ou .csv</p>
+                <input type="file" id="file-input" accept=".xlsx, .xls, .csv" hidden>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 24px; flex-wrap: wrap; gap: 8px;">
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">Lista de Equipa</span>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div class="segmented-control">
+                        <button class="seg-btn active" onclick="setSort('added', this)">Adição</button>
+                        <button class="seg-btn" onclick="setSort('name', this)">Nome (A-Z)</button>
+                        <button class="seg-btn" onclick="setSort('dept', this)">Área</button>
+                    </div>
+                    <input type="hidden" id="sort-members" value="added">
+                    <div style="width: 1px; height: 16px; background: var(--border); margin: 0 4px;"></div>
+                    <button class="toolbar-btn toolbar-btn-danger" style="padding: 0 8px;" onclick="resetMembers()" title="Limpar Todos"><i data-lucide="trash-2" style="width:14px;"></i></button>
+                    <button class="toolbar-btn" onclick="loadSampleData()"><i data-lucide="file-text" style="width:14px;"></i> Exemplo</button>
+                    <button class="toolbar-btn" style="background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600;" onclick="triggerAddMember()"><i data-lucide="plus" style="width:14px;"></i> Novo</button>
+                </div>
+            </div>
+            <div class="grid-2" id="members-container"></div>
+        </div>
+
+        <div id="view-config" class="view-content">
+            <div class="scrollable-body">
+                <div class="section-header" style="align-items: center; margin-bottom: 12px;">
+                    <span style="font-size:14px; font-weight:600;">Cargos (<span id="count-roles">0</span>)</span>
+                    <button class="toolbar-btn" style="background: var(--accent); color: var(--bg-primary); border-color: var(--accent); font-weight: 600;" onclick="triggerAddRolePreset()"><i data-lucide="plus" style="width:14px;"></i> Adicionar</button>
+                </div>
+                <div class="preset-grid" id="roles-container"></div>
+                <div class="section-header">
+                    <span style="font-size:14px; font-weight:600;">Horários Base</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="time" id="new-slot-start" class="input-modern" value="15:00">
+                        <span style="color: var(--text-secondary)">até</span>
+                        <input type="time" id="new-slot-end" class="input-modern" value="16:00">
+                        <button class="btn-primary" onclick="addTimeSlotUI()"><i data-lucide="plus" style="width:14px;"></i></button>
+                        <button class="btn-primary" style="background:transparent; border:1px solid var(--accent); color:var(--text-primary);" onclick="addAutoNextSlot()">+ Próxima Hora</button>
+                    </div>
+                </div>
+                <div class="time-slots-list" id="slots-container" style="display:flex; flex-direction:column; gap:10px;"></div>
+            </div>
+        </div>
+
+        <div id="view-allocate" class="view-content">
+            <div class="section-header">
+                <span style="font-size:14px; font-weight:600;">Timeline de Alocação</span>
+                <button class="btn-primary" onclick="runAutoAllocation()"><i data-lucide="sparkles" style="width:14px;"></i> Alocação Inteligente</button>
+            </div>
+            <div class="allocation-container">
+                <div class="alloc-sidebar">
+                    <div style="font-weight:600; font-size:13px; padding-bottom:8px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:10px;">
+                        <div>Membros Disponíveis</div>
+                        <div class="segmented-control" style="background: var(--bg-tertiary); padding: 3px;">
+                            <button class="seg-btn active" style="flex:1; padding: 4px;" onclick="setSidebarSort('added', this)">Adição</button>
+                            <button class="seg-btn" style="flex:1; padding: 4px;" onclick="setSidebarSort('name', this)">A-Z</button>
+                            <button class="seg-btn" style="flex:1; padding: 4px;" onclick="setSidebarSort('dept', this)">Área</button>
+                        </div>
+                        <input type="hidden" id="sort-sidebar" value="added">
+                    </div>
+                    <div class="sidebar-scroll" id="sidebar-pool" style="min-height:200px; padding:4px; margin-top:8px;"></div>
+                </div>
+                <div class="alloc-board" id="alloc-board-wrapper"></div>
+            </div>
+        </div>
+
+        <div id="view-export" class="view-content" style="justify-content:center; align-items:center;">
+            <button class="btn-primary" style="padding: 14px 28px; font-size: 15px;" onclick="exportExcel()"><i data-lucide="download" style="width:18px; height:18px;"></i> Transferir Excel</button>
+        </div>
+
+    </main>
+
+    <div id="modal-container" class="modal-overlay" onclick="closeModal()"></div>
+    <div id="toast-container"></div>
+
+    <script>
+        const AppState = {
+            members: [],
+            roles: [{ id: 'entr', name: 'Entrada', count: 2, dept: 'Nenhuma' }, { id: 'caix', name: 'Caixa', count: 1, dept: 'Nenhuma' }, { id: 'maqu', name: 'Máquina', count: 1, dept: 'Nenhuma' }],
+            timeSlots: [{ id: 't1', start: '15:00', end: '16:00' }],
+            schedules: {} 
+        };
+        const deptColors = { 'RH': 'badge-rh', 'IT': 'badge-it', 'Marketing': 'badge-mkt', 'Atividades': 'badge-atv', 'Direção': 'badge-direcao' };
+        function getDeptColorVar(dept) { const map = { 'RH': 'var(--dept-rh)', 'IT': 'var(--dept-it)', 'Marketing': 'var(--dept-mkt)', 'Atividades': 'var(--dept-atv)', 'Direção': 'var(--dept-dir)' }; return map[dept] || 'var(--border)'; }
+
+        // Set default date to today
+        document.getElementById('event-date').valueAsDate = new Date();
+
+        function showToast(msg, isError = true) {
+            const container = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = 'toast';
+            if (!isError) { t.style.background = 'var(--accent)'; t.style.color = 'var(--text-on-accent)'; t.innerHTML = `<i data-lucide="check-circle" style="width:18px;"></i> ${msg}<span class="toast-progress" style="background: rgba(0,0,0,0.2)"></span>`; }
+            else { t.innerHTML = `<i data-lucide="alert-circle" style="width:18px;"></i> ${msg}<span class="toast-progress"></span>`; }
+            container.appendChild(t);
+            lucide.createIcons();
+            setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(100%)'; setTimeout(() => t.remove(), 300); }, 3000);
+        }
+
+        function renderAll() { 
+            renderImport(); renderConfig(); renderAllocateGrid(); 
+            const countEl = document.getElementById('count-members');
+            if (parseInt(countEl.innerText) !== AppState.members.length) {
+                countEl.innerText = AppState.members.length;
+                countEl.classList.remove('pop-anim'); void countEl.offsetWidth; countEl.classList.add('pop-anim');
+            }
+        }
+        function switchTab(t) { document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active')); event.target.classList.add('active'); document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active')); document.getElementById(`view-${t}`).classList.add('active'); if (t === 'allocate') renderAllocateGrid(); }
+        function openModal(c) { const o = document.getElementById('modal-container'); o.innerHTML = `<div class="modal-card" onclick="event.stopPropagation()">${c}</div>`; o.style.display = 'grid'; }
+        function closeModal() { document.getElementById('modal-container').style.display = 'none'; }
+        
+        function toggleDarkMode() { 
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            document.body.setAttribute('data-theme', isDark ? '' : 'dark');
+            const icon = document.querySelector('.btn-circle i');
+            icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun');
+            lucide.createIcons();
+        }
+
+        window.onload = () => { lucide.createIcons(); setupDropzone(); renderAll(); };
+
+        function getDeptButtonsHTML(selectedDept = 'Nenhuma') {
+            const depts = ['Direção', 'Atividades', 'Marketing', 'RH', 'IT', 'Nenhuma'];
+            return `<label style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:-6px;">Departamento / Área</label><div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px; width:100%;">` + depts.map(d => `<button class="dept-btn ${d === selectedDept ? 'active' : ''}" onclick="document.querySelectorAll('#modal-container .dept-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active'); document.getElementById('m-dept').value='${d}';">${d}</button>`).join('') + `</div><input type="hidden" id="m-dept" value="${selectedDept}">`;
+        }
+
+        function setSort(val, btn) { document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); document.getElementById('sort-members').value = val; renderImport(); }
+
+        /* --- STEP 1: MEMBERS --- */
+        function renderImport() { 
+            let mList = [...AppState.members];
+            const sortEl = document.getElementById('sort-members');
+            const sortVal = sortEl ? sortEl.value : 'added';
+            
+            const order = { 'Direção': 1, 'Atividades': 2, 'Marketing': 3, 'RH': 4, 'IT': 5, 'Nenhuma': 6 };
+
+            if (sortVal === 'name') mList.sort((a,b) => a.nome.localeCompare(b.nome));
+            else if (sortVal === 'dept') mList.sort((a,b) => (order[a.department||''] || 99) - (order[b.department||''] || 99) || a.nome.localeCompare(b.nome));
+
+            if (mList.length === 0) {
+                document.getElementById('members-container').innerHTML = `<div style="grid-column: 1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 60px 0; color:var(--text-secondary); opacity:0.5;"><i data-lucide="users" style="width:48px; height:48px; margin-bottom:16px;"></i><p>A tua equipa está vazia. Adiciona membros ou importa um ficheiro Excel.</p></div>`;
+                lucide.createIcons();
+                return;
+            }
+
+            let html = ''; let currentDept = null;
+            mList.forEach(m => {
+                if (sortVal === 'dept' && m.department !== currentDept) {
+                    currentDept = m.department;
+                    html += `<div style="grid-column: 1 / -1; margin-top: 12px; text-transform: uppercase; font-size: 11px; font-weight: 700; color: var(--accent); border-bottom: 2px dashed rgba(255,255,255,0.1); padding-bottom: 4px;">${currentDept || 'Geral'}</div>`;
+                }
+                html += `<div class="member-card pop-anim" onclick="openEditMemberModal('${m.id}')"><div style="display:flex; justify-content:space-between; align-items:flex-start;"><div><div style="font-weight:600; font-size:13px;">${m.nome}</div><div style="font-size:11px;color:var(--text-secondary)">${m.email}</div></div><span class="badge ${deptColors[m.department] || 'badge-none'}">${m.department || 'NC'}</span></div></div>`;
+            });
+            document.getElementById('members-container').innerHTML = html; 
+        }
+        function triggerAddMember() { openModal(`<h3>Adicionar Membro</h3><input type="text" id="m-nome" class="input-modern" placeholder="Nome Completo"><input type="email" id="m-email" class="input-modern" placeholder="Email">${getDeptButtonsHTML()}<div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;"><button class="btn-primary" style="background:var(--bg-tertiary); color:var(--text-primary)" onclick="closeModal()">Cancelar</button><button class="btn-primary" onclick="addMember()">Adicionar</button></div>`); }
+        function addMember() { const nome = document.getElementById('m-nome').value; if (!nome) return; AppState.members.push({ id: `m_${Date.now()}`, nome, email: document.getElementById('m-email').value, department: document.getElementById('m-dept').value }); closeModal(); renderAll(); }
+        function openEditMemberModal(id) { const m = AppState.members.find(x => x.id === id); openModal(`<h3>Editar Membro</h3><input type="text" id="m-nome" class="input-modern" value="${m.nome}"><input type="email" id="m-email" class="input-modern" value="${m.email}">${getDeptButtonsHTML(m.department)}<div style="display:flex; gap:8px; justify-content:space-between; margin-top:10px;"><button class="btn-primary" style="background:#FF2D55; color:white;" onclick="deleteMember('${m.id}')">Excluir</button><button class="btn-primary" onclick="saveMember('${m.id}')">Salvar</button></div>`); }
+        function deleteMember(id) { AppState.members = AppState.members.filter(x => x.id !== id); closeModal(); renderAll(); }
+        function resetMembers() { openModal(`<h3 style="color:#FF3B30">Apagar Toda a Equipa</h3><p style="color:var(--text-secondary); font-size:13px; line-height:1.5; margin:12px 0;">Tem a certeza que deseja apagar <b>TODOS</b> os membros na lista de equipa? Esta ação não pode ser desfeita.</p><div style="display:flex; justify-content:space-between; margin-top:16px;"><button class="btn-primary" style="background:var(--bg-tertiary); color:var(--text-primary);" onclick="closeModal()">Cancelar</button><button class="btn-primary" style="background:#FF3B30; color:white;" onclick="executeResetMembers()">Apagar Tudo</button></div>`); }
+        function executeResetMembers() { AppState.members = []; AppState.schedules = {}; closeModal(); renderAll(); showToast("Lista de membros esvaziada.", false); }
+        function handleFile(file) { const reader = new FileReader(); reader.onload = (e) => { const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' }); const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]); AppState.members = rows.map((r, i) => ({ id: `m_${i}`, nome: r.Nome || r.nome || `Membro ${i+1}`, email: r.Email || '', department: autoDetectDepartment(r.Departamento || '') })); renderAll(); switchTab('config'); showToast("Membros importados!", false); }; reader.readAsArrayBuffer(file); }
+        function autoDetectDepartment(d) { const t = (d||'').toUpperCase(); if (t.includes('DIRE')) return 'Direção'; if (t.includes('RH')) return 'RH'; if (t.includes('IT')) return 'IT'; if (t.includes('MKT') || t.includes('MARKETING') || t.includes('REDE') || t.includes('SOCIAL')) return 'Marketing'; if (t.includes('ATV') || t.includes('ATIVIDADES') || t.includes('ATIV')) return 'Atividades'; return 'Nenhuma'; }
+        function setupDropzone() { const dz = document.getElementById('dropzone'); dz.addEventListener('dragover', (e) => e.preventDefault()); dz.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }); document.getElementById('file-input').addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); }); }
+
+        function loadSampleData() {
+            const firstNames = ['Afonso', 'Beatriz', 'Carlos', 'Diana', 'Eduardo', 'Filipa', 'Gustavo', 'Helena', 'Inês', 'João', 'Leonor', 'Miguel'];
+            const lastNames = ['Silva', 'Costa', 'Sousa', 'Rocha', 'Santos', 'Pereira', 'Ferreira', 'Almeida'];
+            const depts = ['Direção', 'RH', 'IT', 'Marketing', 'Atividades'];
+            for (let i = 0; i < 5; i++) {
+                const f = firstNames[Math.floor(Math.random() * firstNames.length)], l = lastNames[Math.floor(Math.random() * lastNames.length)];
+                AppState.members.push({ id: `m_${Date.now()}_${i}`, nome: `${f} ${l}`, email: `${f.toLowerCase()}@netda.pt`, department: depts[Math.floor(Math.random() * depts.length)] });
+            }
+            renderAll();
+            showToast("5 membros adicionados!", false);
+        }
+
+        /* --- STEP 2: CONFIGURE --- */
+        function renderConfig() {
+            let rHtml = '';
+            if (AppState.roles.length === 0) {
+                rHtml = `<div style="grid-column: 1/-1; display:flex; flex-direction:column; align-items:center; padding: 40px 0; color:var(--text-secondary); opacity:0.5;"><i data-lucide="briefcase" style="width:32px; height:32px; margin-bottom:12px;"></i><p>Ainda não há cargos predefinidos. Adiciona cargos e horários ou gera um exemplo.</p></div>`;
+            } else {
+                AppState.roles.forEach(r => {
+                    rHtml += `<div class="config-card pop-anim" ondblclick="openEditRoleModal('${r.id}')"><span style="font-weight: 500; font-size:13px;">${r.name}</span><div class="stepper" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="btn-step" onclick="updateRoleCount('${r.id}', -1)"><i data-lucide="minus" style="width:12px"></i></button><span class="step-value">${r.count}</span><button class="btn-step" onclick="updateRoleCount('${r.id}', 1)"><i data-lucide="plus" style="width:12px"></i></button></div></div>`;
+                });
+            }
+            document.getElementById('roles-container').innerHTML = rHtml;
+            const sortedSlots = [...AppState.timeSlots].sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+            document.getElementById('slots-container').innerHTML = sortedSlots.map((s,i) => `<div class="pop-anim" style="background:var(--bg-primary); padding:10px; border-radius:var(--radius-m); display:flex; justify-content:space-between; align-items:center;"><span style="font-weight:500; font-size:13px;">${s.start} - ${s.end}</span><button class="btn-step" style="color:#FF2D55" onclick="removeTimeSlot('${s.id}')"><i data-lucide="trash" style="width:14px"></i></button></div>`).join('');
+            lucide.createIcons();
+        }
+
+        function triggerAddRolePreset() { const presets = ['Bar', 'Caixa', 'Entrada', 'Máquina', 'Redes Sociais', 'Atividades', 'Logística']; openModal(`<h3>Adicionar Função</h3><div class="preset-grid">${presets.map(p => `<button class="btn-tile" onclick="addRolePreset('${p}')">${p}</button>`).join('')}</div><div style="margin-top:12px; display:flex; gap:6px;"><input type="text" id="custom-r-name" class="input-modern" style="flex:1" placeholder="Outra função..."><button class="btn-primary" onclick="addRolePreset(document.getElementById('custom-r-name').value)">Add</button></div>`); }
+        function timeToMinutes(t) { let [h, m] = (t||"00:00").split(':').map(Number); if (h < 8) h += 24; return h * 60 + m; }
+        function addRolePreset(name) { if (!name) return; AppState.roles.push({ id: `r_${Date.now()}`, name, count: 1, dept: autoDetectDepartment(name) }); closeModal(); renderConfig(); renderAllocateGrid(); }
+        function addTimeSlotUI() { const s = document.getElementById('new-slot-start').value, e = document.getElementById('new-slot-end').value; if (s && e) { if (AppState.timeSlots.find(x => x.start === s && x.end === e)) return showToast("Este horário já existe!"); AppState.timeSlots.push({ id: `t_${Date.now()}`, start: s, end: e }); renderConfig(); renderAllocateGrid(); } }
+        function addAutoNextSlot() { if (AppState.timeSlots.length === 0) return showToast("Adicione um horário base primeiro!"); const sorted = [...AppState.timeSlots].sort((a,b) => timeToMinutes(a.end) - timeToMinutes(b.end)); const last = sorted[sorted.length-1]; let [h, m] = last.end.split(':').map(Number); const nextH = ((h + 1) % 24).toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0'); AppState.timeSlots.push({ id: `t_${Date.now()}`, start: last.end, end: nextH }); renderConfig(); renderAllocateGrid(); }
+        function updateRoleCount(id, delta) { const r = AppState.roles.find(x => x.id === id); if (r) { if (r.count + delta <= 0) AppState.roles = AppState.roles.filter(x => x.id !== id); else r.count += delta; renderConfig(); renderAllocateGrid(); } }
+        function removeTimeSlot(id) { AppState.timeSlots = AppState.timeSlots.filter(s => s.id !== id); renderConfig(); renderAllocateGrid(); }
+        function openEditRoleModal(id) { const r = AppState.roles.find(x => x.id === id); openModal(`<h3>Editar Função</h3><input type="text" id="r-name" class="input-modern" value="${r.name}" style="margin-bottom:8px;">${getDeptButtonsHTML(r.dept || 'Atividades')}<div style="display:flex; justify-content:space-between; margin-top:20px;"><button class="btn-primary" style="background:#FF2D55; color:white" onclick="deleteRole('${r.id}')">Excluir</button><button class="btn-primary" onclick="saveRole('${r.id}')">Salvar</button></div>`); }
+        function saveRole(id) { const r = AppState.roles.find(x => x.id === id); if(r) { r.name = document.getElementById('r-name').value; r.dept = document.getElementById('m-dept').value; } closeModal(); renderConfig(); renderAllocateGrid(); }
+        function deleteRole(id) { AppState.roles = AppState.roles.filter(x => x.id !== id); closeModal(); renderConfig(); renderAllocateGrid(); }
+
+        function getNextHourLabel(timeStr) {
+            if (!timeStr) return "00:00 - 01:00";
+            let [h, m] = timeStr.split(':').map(Number);
+            let nextH = (h + 1) % 24;
+            return `${timeStr} - ${nextH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
+
+        /* --- STEP 3: ALLOCATION --- */
+        function renderAllocateGrid() {
+            const wrapper = document.getElementById('alloc-board-wrapper');
+            const slots = [...AppState.timeSlots].sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+            const baseRoles = AppState.roles;
+            if (slots.length === 0 || baseRoles.length === 0) { 
+                wrapper.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:300px; color:var(--text-secondary); opacity:0.5;"><i data-lucide="layout-grid" style="width:48px; height:48px; margin-bottom:16px;"></i><p>Configure funções e horários na página anterior para gerar o quadro.</p></div>`; 
+                lucide.createIcons(); return; 
+            }
+
+            let html = `<div class="alloc-grid" style="grid-template-columns: 140px repeat(${baseRoles.length}, 1fr)">`;
+            html += `<div class="alloc-header-cell alloc-time-cell" style="background:var(--bg-tertiary)">Timeline / Postos</div>`;
+            baseRoles.forEach(r => html += `<div class="alloc-header-cell">${r.name} (${r.count})</div>`);
+
+            // Montagem
+            const mAssigned = AppState.schedules["slot-montagem"]?.["role-montagem"] || [];
+            let montagemText = slots.length > 0 ? (parseInt(slots[0].start.split(':')[0])-2).toString().padStart(2,'0') + ':00 - ' + slots[0].start : "Pré-Evento";
+            html += `<div style="display:contents;"><div class="alloc-cell alloc-time-cell" style="background:rgba(242,183,5,0.08); font-weight:700;">Montagem<br><span style="font-size:10px; color:var(--text-secondary)">(${montagemText})</span></div><div class="alloc-cell" style="grid-column: span ${baseRoles.length}; text-align:left; background:rgba(242,183,5,0.03);"><div style="font-size:11px; text-align:right;">Vagas: ${mAssigned.length}/3</div><div class="dropzone-cell" data-slot="slot-montagem" data-role="role-montagem" style="min-height:30px">${mAssigned.map(mid => { const m = AppState.members.find(x=>x.id===mid); return m ? `<div class="draggable-card pop-anim" style="border-left-color: ${getDeptColorVar(m.department)};" data-id="${mid}">${m.nome}</div>` : ''; }).join('')}</div></div></div>`;
+
+            slots.forEach((slot) => {
+                html += `<div style="display:contents;"><div class="alloc-cell alloc-time-cell">${slot.start} - ${slot.end}</div>`;
+                baseRoles.forEach(role => {
+                    const assignedList = (AppState.schedules[slot.id] && AppState.schedules[slot.id][role.id]) || [];
+                    html += `<div class="alloc-cell"><div style="font-size:10px; text-align:right; margin-bottom:2px; color:var(--text-secondary)">${assignedList.length}/${role.count}</div><div class="dropzone-cell" data-slot="${slot.id}" data-role="${role.id}">${assignedList.map(mid => { const m = AppState.members.find(x=>x.id===mid); return m ? `<div class="draggable-card pop-anim" style="border-left-color: ${getDeptColorVar(m.department)};" data-id="${mid}">${m.nome}</div>` : ''; }).join('')}</div></div>`;
+                });
+                html += `</div>`;
+            });
+
+            // Desmontagem
+            const dAssigned = AppState.schedules["slot-desmontagem"]?.["role-desmontagem"] || [];
+            let desmontagemText = slots.length > 0 ? getNextHourLabel(slots[slots.length-1].end) : "Pós-Evento";
+            html += `<div style="display:contents;"><div class="alloc-cell alloc-time-cell" style="background:rgba(88,86,214,0.08); font-weight:700;">Desmontagem<br><span style="font-size:10px; color:var(--text-secondary)">(${desmontagemText})</span></div><div class="alloc-cell" style="grid-column: span ${baseRoles.length}; text-align:left; background:rgba(88,86,214,0.03);"><div style="font-size:11px; text-align:right;">Vagas: ${dAssigned.length}/5</div><div class="dropzone-cell" data-slot="slot-desmontagem" data-role="role-desmontagem" style="min-height:30px">${dAssigned.map(mid => { const m = AppState.members.find(x=>x.id===mid); return m ? `<div class="draggable-card pop-anim" style="border-left-color: ${getDeptColorVar(m.department)};" data-id="${mid}">${m.nome}</div>` : ''; }).join('')}</div></div></div>`;
+
+            html += `</div>`; wrapper.innerHTML = html; renderSidebarPool(); setupDragAndDrop();
+        }
+
+        function renderSidebarPool() { 
+            const assigned = new Set();
+            Object.values(AppState.schedules).forEach(s => Object.values(s).forEach(arr => arr.forEach(id => assigned.add(id))));
+            const sortVal = document.getElementById('sort-sidebar') ? document.getElementById('sort-sidebar').value : 'added';
+            const order = { 'Direção': 1, 'Atividades': 2, 'Marketing': 3, 'RH': 4, 'IT': 5, 'Nenhuma': 6 };
+            let pool = AppState.members.filter(m => !assigned.has(m.id));
+            if (sortVal === 'name') pool.sort((a,b) => a.nome.localeCompare(b.nome));
+            else if (sortVal === 'dept') pool.sort((a,b) => (order[a.department||''] || 99) - (order[b.department||''] || 99) || a.nome.localeCompare(b.nome));
+            document.getElementById('sidebar-pool').innerHTML = pool.map((m,i) => `<div class="draggable-card pop-anim" style="border-left-color: ${getDeptColorVar(m.department)};" data-id="${m.id}">${m.nome}</div>`).join(''); 
+        }
+
+        function setSidebarSort(val, btn) {
+            btn.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('sort-sidebar').value = val;
+            renderSidebarPool();
+        }
+
+        function setupDragAndDrop() {
+            document.querySelectorAll('.dropzone-cell, #sidebar-pool').forEach(el => {
+                new Sortable(el, {
+                    group: { name: 'allocate' }, animation: 250, sort: false, forceFallback: true, fallbackClass: 'sortable-drag', ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
+                    onAdd: function (evt) {
+                        const mid = evt.item.getAttribute('data-id'), target = evt.to;
+                        if (target.id === 'sidebar-pool') { const fS = evt.from.getAttribute('data-slot'), fR = evt.from.getAttribute('data-role'); if (fS && AppState.schedules[fS]) AppState.schedules[fS][fR] = AppState.schedules[fS][fR].filter(x => x !== mid); evt.item.remove(); renderAllocateGrid(); }
+                        else { const sId = target.getAttribute('data-slot'), rId = target.getAttribute('data-role'); if (!AppState.schedules[sId]) AppState.schedules[sId] = {}; if (!AppState.schedules[sId][rId]) AppState.schedules[sId][rId] = []; let isDouble = false; for (const [_, l] of Object.entries(AppState.schedules[sId])) { if (l.includes(mid)) isDouble = true; } if (isDouble) { showToast("Este membro já está a trabalhar nesta hora!"); evt.item.remove(); return; } AppState.schedules[sId][rId].push(mid); evt.item.remove(); renderAllocateGrid(); }
+                    }
+                });
+            });
+        }
+
+        function runAutoAllocation() {
+            if (AppState.members.length === 0) return showToast("Adicione membros primeiro!");
+
+            AppState.schedules = { "slot-montagem": { "role-montagem": [] }, "slot-desmontagem": { "role-desmontagem": [] } }; 
+            const workload = {}; AppState.members.forEach(m => workload[m.id] = 0);
+
+            const sortedSlots = [...AppState.timeSlots].sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+            sortedSlots.forEach(slot => {
+                AppState.schedules[slot.id] = {}; const assignedThisSlot = new Set();
+                AppState.roles.forEach(role => { 
+                    AppState.schedules[slot.id][role.id] = []; 
+                    let pool = AppState.members.filter(m => !assignedThisSlot.has(m.id)); 
+                    pool.sort((a,b) => {
+                        let aMatch = (a.department === role.dept) ? 1 : 0;
+                        let bMatch = (b.department === role.dept) ? 1 : 0;
+                        if (aMatch !== bMatch) return bMatch - aMatch;
+                        return workload[a.id] - workload[b.id];
+                    }); 
+                    for (let i = 0; i < role.count && pool[i]; i++) { 
+                        AppState.schedules[slot.id][role.id].push(pool[i].id); 
+                        assignedThisSlot.add(pool[i].id); 
+                        workload[pool[i].id]++; 
+                    } 
+                });
+            });
+
+            // Guaranteed Montagem/Desmontagem
+            let montPool = [...AppState.members].sort((a,b) => workload[a.id] - workload[b.id]);
+            for (let i=0; i<3 && montPool[i]; i++) { AppState.schedules["slot-montagem"]["role-montagem"].push(montPool[i].id); workload[montPool[i].id]++; }
+            
+            let desmPool = [...AppState.members].sort((a,b) => workload[a.id] - workload[b.id]);
+            for (let i=0; i<5 && desmPool[i]; i++) { AppState.schedules["slot-desmontagem"]["role-desmontagem"].push(desmPool[i].id); workload[desmPool[i].id]++; }
+
+            renderAllocateGrid();
+            showToast("Alocação Inteligente Concluída!", false);
+        }
+
+        /* --- EXPORT FIX (MONTAGEM/DESMONTAGEM VISUAL SPAN) --- */
+        function exportExcel() {
+            if (AppState.members.length === 0) return showToast("Nenhuma alocação efectuada!");
+            const eventNameRaw = document.getElementById('event-name').innerText;
+            const eventName = eventNameRaw.includes('[') ? "Evento_NETDA" : eventNameRaw.trim();
+            const dateInput = document.getElementById('event-date').value;
+            const eventDateStr = dateInput ? new Date(dateInput).toLocaleDateString('pt-PT') : new Date().toLocaleDateString('pt-PT');
+            
+            const workbook = new ExcelJS.Workbook(); const sheet = workbook.addWorksheet(eventName);
+            const slots = [...AppState.timeSlots].sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+            const baseRoles = AppState.roles;
+
+            // Header - Linha 1: Event Name & Date
+            const topHeaderRow = sheet.addRow([`${eventName} - ${eventDateStr}`]);
+            topHeaderRow.font = { bold: true, size: 16, color: { argb: '1C1C1E' } };
+            topHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F2B705' } };
+            topHeaderRow.alignment = { horizontal: 'center', vertical: 'middle' };
+            topHeaderRow.height = 30;
+
+            const columns = [{ header: 'Horas', key: 'horas', width: 22 }];
+            baseRoles.forEach(r => columns.push({ header: r.name, key: r.id, width: 22 }));
+            sheet.columns = columns; // Sets the columns configuration (hidden row created by ExcelJS but we override)
+            
+            if(baseRoles.length > 0) sheet.mergeCells(1, 1, 1, 1 + baseRoles.length); // Merge title row
+
+            // Real Header - Linha 2
+            const row2 = sheet.addRow(columns.map(c => c.header));
+            row2.font = { bold: true, color: { argb: 'FFFFFF' } }; row2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1C1C1E' } }; row2.alignment = { horizontal: 'center' };
+
+            const colorSet = { 'IT': 'D4EDDA', 'RH': 'CCE5FF', 'Marketing': 'FFF3CD', 'Atividades': 'F8D7DA', 'Direção': 'E2E3E5' };
+
+            // 1. Add Montagem Rows
+            const mAssigned = AppState.schedules["slot-montagem"]?.["role-montagem"] || [];
+            mAssigned.forEach((mid, idx) => {
+                const m = AppState.members.find(x => x.id === mid);
+                if (m) {
+                    const rNode = sheet.addRow({ horas: idx === 0 ? 'Montagem' : '' });
+                    rNode.getCell(2).value = m.nome;
+                    if(baseRoles.length > 0) sheet.mergeCells(rNode.number, 2, rNode.number, 1 + baseRoles.length);
+                    rNode.getCell(2).alignment = { horizontal: 'center' };
+                    rNode.eachCell((c, cnum) => { if (cnum > 1) c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF2B7' } }; });
+                }
+            });
+
+            // 2. Add Mid Slots Grid Rows
+            slots.forEach(slot => {
+                let maxCount = 0;
+                baseRoles.forEach(role => { const l = (AppState.schedules[slot.id] && AppState.schedules[slot.id][role.id]) || []; if (l.length > maxCount) maxCount = l.length; });
+                if (maxCount === 0) maxCount = 1;
+
+                for (let k = 0; k < maxCount; k++) {
+                    const rowObj = { horas: k === 0 ? `${slot.start} - ${slot.end}` : '' };
+                    baseRoles.forEach(role => {
+                        const l = (AppState.schedules[slot.id] && AppState.schedules[slot.id][role.id]) || [];
+                        if (l[k]) rowObj[role.id] = AppState.members.find(x => x.id === l[k])?.nome || '';
+                    });
+                    const rNode = sheet.addRow(rowObj);
+                    rNode.eachCell((c, cnum) => { if (cnum > 1) { const role = baseRoles[cnum - 2]; if (role) { const clr = colorSet[role.dept] || 'FFFAFA'; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb: clr } }; } } });
+                }
+            });
+
+            // 3. Add Desmontagem Rows
+            const dAssigned = AppState.schedules["slot-desmontagem"]?.["role-desmontagem"] || [];
+            dAssigned.forEach((mid, idx) => {
+                const m = AppState.members.find(x => x.id === mid);
+                if (m) {
+                    const rNode = sheet.addRow({ horas: idx === 0 ? 'Desmontagem' : '' });
+                    rNode.getCell(2).value = m.nome;
+                    if(baseRoles.length > 0) sheet.mergeCells(rNode.number, 2, rNode.number, 1 + baseRoles.length);
+                    rNode.getCell(2).alignment = { horizontal: 'center' };
+                    rNode.eachCell((c, cnum) => { if (cnum > 1) c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'E5D4FD' } }; });
+                }
+            });
+
+            workbook.xlsx.writeBuffer().then(b => saveAs(new Blob([b]), `NETDA_${eventName.replace(/\s+/g, '_')}_Alocacao.xlsx`));
+            showToast("Relatório Excel baixado!", false);
+        }
+    </script>
+</body>
+</html>
